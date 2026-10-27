@@ -131,10 +131,6 @@ def test_invalid_syntax_raises_syntax_error():
         CodeAnalyzer("def broken(:")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known gap: 'x in list' inside a loop is not flagged yet",
-)
 def test_membership_check_in_loop_should_be_quadratic():
     result = analyze("""
         def unique(nums):
@@ -145,4 +141,53 @@ def test_membership_check_in_loop_should_be_quadratic():
             return seen
     """)["unique"]
 
+    assert "linear scan inside loop" in result["patterns"]
     assert "O(n^2)" in result["time_complexity_estimate"]
+
+
+def test_set_membership_in_loop_is_not_flagged():
+    result = analyze("""
+        def unique(nums):
+            seen = set()
+            output = []
+            for x in nums:
+                if x not in seen:
+                    seen.add(x)
+                    output.append(x)
+            return output
+    """)["unique"]
+
+    assert "linear scan inside loop" not in result["patterns"]
+    assert result["time_complexity_estimate"].startswith("O(n)")
+
+
+def test_membership_against_literal_is_not_flagged():
+    result = analyze("""
+        def only_small(nums):
+            for x in nums:
+                if x in (1, 2, 3):
+                    print(x)
+    """)["only_small"]
+
+    assert "linear scan inside loop" not in result["patterns"]
+
+
+def test_index_call_in_loop_is_quadratic_candidate():
+    result = analyze("""
+        def positions(data, nums):
+            for x in nums:
+                print(data.index(x))
+    """)["positions"]
+
+    assert "linear scan inside loop" in result["patterns"]
+    assert "O(n^2)" in result["time_complexity_estimate"]
+
+
+def test_membership_outside_loop_is_not_quadratic():
+    result = analyze("""
+        def has_value(nums, x):
+            return x in nums
+    """)["has_value"]
+
+    assert "membership test" in result["patterns"]
+    assert "linear scan inside loop" not in result["patterns"]

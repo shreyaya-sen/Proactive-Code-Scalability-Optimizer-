@@ -27,10 +27,59 @@ class CodeAnalyzer:
         has_recursion = False
         has_search = False
         has_growing_collection = False
+        has_scan_in_loop = False
+
+        # Names that this function assigns from a set or dict. Looking
+        # something up in these is fast (hashing), so it is not a slow scan.
+        hashed_names = set()
+
+        for item in ast.walk(node):
+            if isinstance(item, ast.Assign):
+                targets = item.targets
+                value = item.value
+            elif isinstance(item, ast.AnnAssign) and item.value is not None:
+                targets = [item.target]
+                value = item.value
+            else:
+                continue
+
+            is_hashed_value = isinstance(
+                value, (ast.Set, ast.SetComp, ast.Dict, ast.DictComp)
+            ) or (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id in ("set", "frozenset", "dict")
+            )
+
+            if is_hashed_value:
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        hashed_names.add(target.id)
 
         def add_pattern(pattern):
             if pattern not in patterns:
                 patterns.append(pattern)
+
+        def is_fast_or_small_container(expression):
+            # Literals are small and fixed, and sets/dicts use hashing.
+            if isinstance(
+                expression,
+                (
+                    ast.List,
+                    ast.Tuple,
+                    ast.Constant,
+                    ast.Set,
+                    ast.Dict,
+                    ast.SetComp,
+                    ast.DictComp,
+                ),
+            ):
+                return True
+
+            return (
+                isinstance(expression, ast.Name)
+                and expression.id in hashed_names
+            )
 
         def is_logarithmic_while(statement):
             # Recognize common updates such as i //= 2 or i *= 2.
@@ -88,11 +137,27 @@ class CodeAnalyzer:
 
             return False
 
-        def inspect_calls(statement):
+        def inspect_calls(statement, in_loop=False):
             nonlocal has_sort, has_recursion
             nonlocal has_search, has_growing_collection
+            nonlocal has_scan_in_loop
 
             for item in ast.walk(statement):
+                # "x in container" / "x not in container"
+                if isinstance(item, ast.Compare):
+                    for op, right in zip(item.ops, item.comparators):
+                        if (
+                            isinstance(op, (ast.In, ast.NotIn))
+                            and not is_fast_or_small_container(right)
+                        ):
+                            add_pattern("membership test")
+
+                            if in_loop:
+                                has_scan_in_loop = True
+                                add_pattern("linear scan inside loop")
+
+                    continue
+
                 if not isinstance(item, ast.Call):
                     continue
 
@@ -119,6 +184,10 @@ class CodeAnalyzer:
                     if func.attr in ("index", "count"):
                         has_search = True
                         add_pattern("potential repeated search")
+
+                        if in_loop:
+                            has_scan_in_loop = True
+                            add_pattern("linear scan inside loop")
 
                     if func.attr in ("append", "extend", "add", "update"):
                         has_growing_collection = True
@@ -159,7 +228,8 @@ class CodeAnalyzer:
                     else:
                         has_unknown_while = True
 
-                    inspect_calls(statement.test)
+                    # The while condition runs on every iteration.
+                    inspect_calls(statement.test, in_loop=True)
                     visit_block(statement.body, depth + 1)
                     visit_block(statement.orelse, depth)
                     continue
@@ -182,7 +252,7 @@ class CodeAnalyzer:
                         has_growing_collection = True
                         add_pattern("collection creation")
 
-                inspect_calls(statement)
+                inspect_calls(statement, in_loop=depth > 0)
 
                 # Conditions and nested blocks can contain loops too.
                 if isinstance(statement, ast.If):
@@ -217,6 +287,12 @@ class CodeAnalyzer:
         elif has_nested_loops:
             time_complexity = (
                 "O(n^2) or higher candidate; inspect loop bounds"
+            )
+        elif has_scan_in_loop:
+            time_complexity = (
+                "O(n^2) candidate: a linear scan (list membership, "
+                ".index or .count) runs inside a loop; ignore this if "
+                "the container is really a set or dict"
             )
         elif has_log_loop:
             time_complexity = (
