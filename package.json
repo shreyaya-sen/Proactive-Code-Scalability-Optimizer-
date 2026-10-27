@@ -1,0 +1,66 @@
+{
+  "name": "codescale-ai",
+  "displayName": "CodeScale AI",
+  "description": "An AI-powered developer tool that analyzes code quality, optimizes inputs by handling duplicates and missing values, evaluates best- and worst-case scenarios, identifies inefficiencies, assesses time and space complexity, and recommends validated code improvements for better performance and scalability.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.140.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codescale-ai.helloWorld",
+        "title": "CodeScale AI: Hello World"
+      },
+      {
+        "command": "codescale-ai.setApiKey",
+        "title": "CodeScale AI: Set Groq API Key"
+      },
+      {
+        "command": "codescale-ai.checkApiKey",
+        "title": "CodeScale AI: Check Groq API Key"
+      },
+      {
+        "command": "codescale-ai.testGroq",
+        "title": "CodeScale AI: Test Groq Connection"
+      },
+      {
+        "command": "codescale-ai.openChat",
+        "title": "CodeScale AI: Open Chat"
+      },
+      {
+        "command": "codescale-ai.readWorkspace",
+        "title": "CodeScale AI: Read Workspace"
+      },
+      {
+        "command": "codescale-ai.editCurrentFile",
+        "title": "CodeScale AI: Edit current file"
+      }
+    ]
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.140.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "eslint": "^10.5.0"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "groq-sdk": "^1.6.0"
+  }
+}
