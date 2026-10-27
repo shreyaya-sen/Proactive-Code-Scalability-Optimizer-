@@ -259,12 +259,15 @@ Do not claim to execute code or tests.`;
 
                 const result = await getClient(key).chat.completions.create({
                     model: MODEL,
-                    messages: [{ role: 'user', content: 'Reply: Connected!' }],
-                    max_completion_tokens: 50
+                    messages: [{ role: 'user', content: 'Reply with the single word: Connected' }],
+                    max_completion_tokens: 500
                 });
 
-                output.appendLine(result.choices[0]?.message?.content || 'No response.');
+                const reply = result.choices[0]?.message?.content?.trim();
+                output.appendLine(reply || 'No response.');
                 output.show(true);
+                if (!reply) throw new Error('Groq answered, but the reply was empty.');
+
                 vscode.window.showInformationMessage('Groq connection succeeded.');
             } catch (error) {
                 output.appendLine(errorText(error));
