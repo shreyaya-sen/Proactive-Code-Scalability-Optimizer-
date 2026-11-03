@@ -211,3 +211,34 @@ def test_membership_in_loop_reports_a_finding_with_a_line_number():
     assert finding["severity"] == "medium"
     assert finding["evidence_type"] == "static"
     assert "seen" in finding["message"]
+
+def test_index_call_in_loop_reports_a_finding():
+    result = analyze("""
+        def positions(data, nums):
+            for x in nums:
+                print(data.index(x))
+    """)["positions"]
+
+    finding = result["findings"][0]
+
+    assert finding["line"] == 4
+    assert finding["category"] == "repeated_search_in_loop"
+    assert finding["severity"] == "medium"
+    assert finding["evidence_type"] == "static"
+    assert "data.index" in finding["message"]
+    
+def test_nested_loops_report_a_finding_on_the_inner_loop():
+    result = analyze("""
+        def print_pairs(nums):
+            for x in nums:
+                for y in nums:
+                    print(x, y)
+    """)["print_pairs"]
+
+    finding = result["findings"][0]
+
+    assert finding["line"] == 4
+    assert finding["category"] == "nested_loops"
+    assert finding["severity"] == "medium"
+    assert finding["evidence_type"] == "static"
+    assert "nested" in finding["message"].lower()

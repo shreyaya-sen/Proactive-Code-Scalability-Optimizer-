@@ -82,6 +82,24 @@ class CodeAnalyzer:
                 "safe_autofix": False,
             })
 
+        def add_nested_loop_finding(loop_statement):
+            kind = "while" if isinstance(loop_statement, ast.While) else "for"
+
+            add_finding(
+                loop_statement,
+                "nested_loops",
+                "medium",
+                (
+                    f"This `{kind}` loop is nested inside another loop, "
+                    "so the work can grow as O(n^2) or higher."
+                ),
+                (
+                    "Check the loop bounds. If the inner loop looks values "
+                    "up, a set or dictionary built once before the outer "
+                    "loop may remove it. Confirm the results stay the same."
+                ),
+            )
+
         def is_fast_or_small_container(expression):
             # Literals are small and fixed, and sets/dicts use hashing.
             if isinstance(
@@ -263,6 +281,7 @@ class CodeAnalyzer:
                     if depth > 0:
                         has_nested_loops = True
                         add_pattern("nested loops")
+                        add_nested_loop_finding(statement)
                     else:
                         add_pattern("loop")
 
@@ -278,6 +297,7 @@ class CodeAnalyzer:
                     if depth > 0:
                         has_nested_loops = True
                         add_pattern("nested loops")
+                        add_nested_loop_finding(statement)
 
                     if is_logarithmic_while(statement):
                         has_log_loop = True
