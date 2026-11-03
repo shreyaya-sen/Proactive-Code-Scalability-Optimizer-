@@ -242,3 +242,20 @@ def test_nested_loops_report_a_finding_on_the_inner_loop():
     assert finding["severity"] == "medium"
     assert finding["evidence_type"] == "static"
     assert "nested" in finding["message"].lower()
+    
+def test_sorting_inside_a_loop_reports_a_finding():
+    result = analyze("""
+        def process(groups):
+            for group in groups:
+                ordered = sorted(group)
+                print(ordered)
+    """)["process"]
+
+    finding = result["findings"][0]
+
+    assert finding["line"] == 4
+    assert finding["category"] == "sort_in_loop"
+    assert finding["severity"] == "medium"
+    assert finding["evidence_type"] == "static"
+    assert "sorted" in finding["message"]
+    

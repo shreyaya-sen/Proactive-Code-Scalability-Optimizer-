@@ -100,6 +100,23 @@ class CodeAnalyzer:
                 ),
             )
 
+        def add_sort_in_loop_finding(call_node):
+            add_finding(
+                call_node,
+                "sort_in_loop",
+                "medium",
+                (
+                    f"`{ast.unparse(call_node)}` sorts data on each loop "
+                    "pass. Sorting costs O(n log n), so repeating it can "
+                    "slow the loop down a lot."
+                ),
+                (
+                    "If the data does not change between passes, sort it "
+                    "once before the loop. If each pass sorts different "
+                    "data, check that the sizes are small."
+                ),
+            )
+
         def is_fast_or_small_container(expression):
             # Literals are small and fixed, and sets/dicts use hashing.
             if isinstance(
@@ -227,6 +244,9 @@ class CodeAnalyzer:
                         has_sort = True
                         add_pattern("sorting")
 
+                        if in_loop:
+                            add_sort_in_loop_finding(item)
+
                     if func.id == node.name:
                         has_recursion = True
                         add_pattern("recursion")
@@ -239,6 +259,9 @@ class CodeAnalyzer:
                     if func.attr == "sort":
                         has_sort = True
                         add_pattern("sorting")
+
+                        if in_loop:
+                            add_sort_in_loop_finding(item)
 
                     if func.attr in ("index", "count"):
                         has_search = True
