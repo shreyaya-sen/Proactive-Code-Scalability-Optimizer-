@@ -191,3 +191,23 @@ def test_membership_outside_loop_is_not_quadratic():
 
     assert "membership test" in result["patterns"]
     assert "linear scan inside loop" not in result["patterns"]
+
+    
+
+def test_membership_in_loop_reports_a_finding_with_a_line_number():
+    result = analyze("""
+        def unique(nums):
+            seen = []
+            for x in nums:
+                if x not in seen:
+                    seen.append(x)
+            return seen
+    """)["unique"]
+
+    finding = result["findings"][0]
+
+    assert finding["line"] == 5
+    assert finding["category"] == "list_membership_in_loop"
+    assert finding["severity"] == "medium"
+    assert finding["evidence_type"] == "static"
+    assert "seen" in finding["message"]

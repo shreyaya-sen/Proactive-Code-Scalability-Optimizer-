@@ -18,6 +18,8 @@ class CodeAnalyzer:
 
     def analyze_function(self, node):
         patterns = []
+        findings = []
+        seen_findings = set()
         loop_count = 0
         max_loop_depth = 0
         has_nested_loops = False
@@ -59,6 +61,26 @@ class CodeAnalyzer:
         def add_pattern(pattern):
             if pattern not in patterns:
                 patterns.append(pattern)
+
+        def add_finding(ast_node, category, severity, message, suggestion):
+            # One finding per line and category, even if the same code
+            # is visited more than once.
+            key = (ast_node.lineno, category)
+            if key in seen_findings:
+                return
+            seen_findings.add(key)
+
+            findings.append({
+                "id": "",
+                "line": ast_node.lineno,
+                "end_line": getattr(ast_node, "end_lineno", ast_node.lineno),
+                "category": category,
+                "severity": severity,
+                "evidence_type": "static",
+                "message": message,
+                "suggestion": suggestion,
+                "safe_autofix": False,
+            })
 
         def is_fast_or_small_container(expression):
             # Literals are small and fixed, and sets/dicts use hashing.
@@ -156,6 +178,25 @@ class CodeAnalyzer:
                                 has_scan_in_loop = True
                                 add_pattern("linear scan inside loop")
 
+                                container = ast.unparse(right)
+                                add_finding(
+                                    item,
+                                    "list_membership_in_loop",
+                                    "medium",
+                                    (
+                                        f"`{ast.unparse(item)}` may check "
+                                        f"every item of `{container}` on each "
+                                        "loop pass. If it is a list, the loop "
+                                        "can become O(n^2)."
+                                    ),
+                                    (
+                                        f"If `{container}` is a list and its "
+                                        "order is not needed for this check, "
+                                        "a set makes the check much faster. "
+                                        "Confirm the results stay the same."
+                                    ),
+                                )
+
                     continue
 
                 if not isinstance(item, ast.Call):
@@ -188,6 +229,22 @@ class CodeAnalyzer:
                         if in_loop:
                             has_scan_in_loop = True
                             add_pattern("linear scan inside loop")
+
+                            add_finding(
+                                item,
+                                "repeated_search_in_loop",
+                                "medium",
+                                (
+                                    f"`{ast.unparse(item)}` searches a whole "
+                                    "collection on each loop pass, which "
+                                    "can make the loop O(n^2)."
+                                ),
+                                (
+                                    "Build a dictionary or set once before "
+                                    "the loop and look values up in it, if "
+                                    "that gives the same result."
+                                ),
+                            )
 
                     if func.attr in ("append", "extend", "add", "update"):
                         has_growing_collection = True
@@ -275,6 +332,11 @@ class CodeAnalyzer:
         if loop_count > 1 and not has_nested_loops:
             add_pattern("multiple sequential loops")
 
+        # Order findings by line number and give each one an id.
+        findings.sort(key=lambda finding: finding["line"])
+        for number, finding in enumerate(findings, start=1):
+            finding["id"] = f"{node.name}-{number}"
+
         # TIME COMPLEXITY: structural estimates, not proof.
         if has_recursion:
             time_complexity = (
@@ -335,6 +397,7 @@ class CodeAnalyzer:
             "time_complexity_estimate": time_complexity,
             "auxiliary_space_estimate": space_complexity,
             "patterns": patterns,
+            "findings": findings,
             "confidence": "heuristic",
             "note": (
                 "Static estimate. Exact complexity requires reasoning "
