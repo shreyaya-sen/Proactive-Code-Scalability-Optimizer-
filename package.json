@@ -38,8 +38,8 @@
         "title": "CodeScale AI: Read Workspace"
       },
       {
-        "command": "codescale-ai.editCurrentFile",
-        "title": "CodeScale AI: Edit current file"
+        "command": "codescale-ai.analyzeCurrentFile",
+        "title": "CodeScale AI: Analyze Current File"
       }
     ]
   },
