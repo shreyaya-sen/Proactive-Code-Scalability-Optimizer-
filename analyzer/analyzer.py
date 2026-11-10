@@ -1,79 +1,76 @@
+
+from __future__ import annotations
+
 import ast
 import json
 import sys
+from pathlib import Path
+from typing import Any
+
+try:
+    from analyzer.complexity import ComplexityEstimator
+except ModuleNotFoundError:
+    from complexity import ComplexityEstimator
 
 
 class CodeAnalyzer:
-    def __init__(self, source):
-        self.tree = ast.parse(source)
+    """AST-based, heuristic analyzer for Python function scalability."""
 
-    def analyze(self):
-        results = []
+    def __init__(self, source: str):
+        self.source = source
+        self.lines = source.splitlines()
+        self.tree = ast.parse(source)
+        self.results: list[dict[str, Any]] = []
+        self._finding_counter = 0
+        self.complexity_estimator = ComplexityEstimator()
+
+    def analyze(self) -> list[dict[str, Any]]:
+        """Analyze every function and return one result per function."""
+        self.results = []
+        self._finding_counter = 0
 
         for node in ast.walk(self.tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                results.append(self.analyze_function(node))
+                self.results.append(self.analyze_function(node))
 
-        return results
+        self.results.sort(key=lambda item: item["line"])
+        return self.results
 
-    def analyze_function(self, node):
-        patterns = []
-        findings = []
-        seen_findings = set()
-        loop_count = 0
-        max_loop_depth = 0
-        has_nested_loops = False
-        has_log_loop = False
-        has_unknown_while = False
-        has_sort = False
-        has_recursion = False
-        has_search = False
-        has_growing_collection = False
-        has_scan_in_loop = False
+    def analyze_function(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> dict[str, Any]:
+        findings: list[dict[str, Any]] = []
+        patterns: list[str] = []
+        function_name = node.name
 
-        # Names that this function assigns from a set or dict. Looking
-        # something up in these is fast (hashing), so it is not a slow scan.
-        hashed_names = set()
+        def add_pattern(*values: str) -> None:
+            for value in values:
+                if value not in patterns:
+                    patterns.append(value)
 
-        for item in ast.walk(node):
-            if isinstance(item, ast.Assign):
-                targets = item.targets
-                value = item.value
-            elif isinstance(item, ast.AnnAssign) and item.value is not None:
-                targets = [item.target]
-                value = item.value
-            else:
-                continue
+        def add_finding(
+            target: ast.AST,
+            category: str,
+            severity: str,
+            message: str,
+            suggestion: str,
+        ) -> None:
+            line = getattr(target, "lineno", node.lineno)
+            end_line = getattr(target, "end_lineno", line)
 
-            is_hashed_value = isinstance(
-                value, (ast.Set, ast.SetComp, ast.Dict, ast.DictComp)
-            ) or (
-                isinstance(value, ast.Call)
-                and isinstance(value.func, ast.Name)
-                and value.func.id in ("set", "frozenset", "dict")
-            )
-
-            if is_hashed_value:
-                for target in targets:
-                    if isinstance(target, ast.Name):
-                        hashed_names.add(target.id)
-
-        def add_pattern(pattern):
-            if pattern not in patterns:
-                patterns.append(pattern)
-
-        def add_finding(ast_node, category, severity, message, suggestion):
-            # One finding per line and category, even if the same code
-            # is visited more than once.
-            key = (ast_node.lineno, category)
-            if key in seen_findings:
+            if any(
+                finding["line"] == line
+                and finding["category"] == category
+                for finding in findings
+            ):
                 return
-            seen_findings.add(key)
+
+            self._finding_counter += 1
 
             findings.append({
-                "id": "",
-                "line": ast_node.lineno,
-                "end_line": getattr(ast_node, "end_lineno", ast_node.lineno),
+                "id": f"finding-{self._finding_counter}",
+                "line": line,
+                "end_line": end_line,
                 "category": category,
                 "severity": severity,
                 "evidence_type": "static",
@@ -82,262 +79,100 @@ class CodeAnalyzer:
                 "safe_autofix": False,
             })
 
-        def add_nested_loop_finding(loop_statement):
-            kind = "while" if isinstance(loop_statement, ast.While) else "for"
-
-            add_finding(
-                loop_statement,
-                "nested_loops",
-                "medium",
-                (
-                    f"This `{kind}` loop is nested inside another loop, "
-                    "so the work can grow as O(n^2) or higher."
-                ),
-                (
-                    "Check the loop bounds. If the inner loop looks values "
-                    "up, a set or dictionary built once before the outer "
-                    "loop may remove it. Confirm the results stay the same."
-                ),
+        def is_loop(statement: ast.stmt) -> bool:
+            return isinstance(
+                statement,
+                (ast.For, ast.AsyncFor, ast.While),
             )
 
-        def add_sort_in_loop_finding(call_node):
-            add_finding(
-                call_node,
-                "sort_in_loop",
-                "medium",
-                (
-                    f"`{ast.unparse(call_node)}` sorts data on each loop "
-                    "pass. Sorting costs O(n log n), so repeating it can "
-                    "slow the loop down a lot."
-                ),
-                (
-                    "If the data does not change between passes, sort it "
-                    "once before the loop. If each pass sorts different "
-                    "data, check that the sizes are small."
-                ),
-            )
+        def walk_statements(
+            statements: list[ast.stmt],
+            depth: int = 0,
+        ):
+            """Walk statements while tracking loop nesting."""
+            for statement in statements:
+                yield statement, depth
 
-        def is_fast_or_small_container(expression):
-            # Literals are small and fixed, and sets/dicts use hashing.
-            if isinstance(
-                expression,
-                (
-                    ast.List,
-                    ast.Tuple,
-                    ast.Constant,
-                    ast.Set,
-                    ast.Dict,
-                    ast.SetComp,
-                    ast.DictComp,
-                ),
-            ):
-                return True
+                if is_loop(statement):
+                    yield from walk_statements(
+                        getattr(statement, "body", []),
+                        depth + 1,
+                    )
+                    yield from walk_statements(
+                        getattr(statement, "orelse", []),
+                        depth,
+                    )
+                    continue
+
+                for _, value in ast.iter_fields(statement):
+                    if isinstance(value, list):
+                        children = [
+                            item for item in value
+                            if isinstance(item, ast.stmt)
+                        ]
+                        if children:
+                            yield from walk_statements(children, depth)
+
+        def is_sort_call(call: ast.Call) -> bool:
+            if isinstance(call.func, ast.Name):
+                return call.func.id == "sorted"
 
             return (
-                isinstance(expression, ast.Name)
-                and expression.id in hashed_names
+                isinstance(call.func, ast.Attribute)
+                and call.func.attr == "sort"
             )
 
-        def is_logarithmic_while(statement):
-            # Recognize common updates such as i //= 2 or i *= 2.
-            # Also require the updated variable to occur in the condition.
-            if not isinstance(statement, ast.While):
-                return False
+        def is_index_or_count_call(call: ast.Call) -> bool:
+            return (
+                isinstance(call.func, ast.Attribute)
+                and call.func.attr in {"index", "count"}
+            )
 
-            condition_names = {
-                item.id for item in ast.walk(statement.test)
-                if isinstance(item, ast.Name)
-            }
+        def is_logarithmic_while(statement: ast.While) -> bool:
+            for child in ast.walk(statement):
+                if isinstance(child, ast.AugAssign):
+                    if isinstance(child.op, (ast.FloorDiv, ast.Div)):
+                        return True
 
-            for item in ast.walk(statement):
-                target_name = None
-                factor = None
-
-                if isinstance(item, ast.AugAssign):
-                    if isinstance(item.target, ast.Name):
-                        target_name = item.target.id
-
-                    if isinstance(item.value, ast.Constant):
-                        factor = item.value.value
-
+                if isinstance(child, ast.Assign):
                     if (
-                        target_name in condition_names
-                        and isinstance(item.op, (ast.Mult, ast.FloorDiv))
-                        and isinstance(factor, int)
-                        and factor > 1
+                        isinstance(child.value, ast.BinOp)
+                        and isinstance(
+                            child.value.op,
+                            (ast.FloorDiv, ast.Div),
+                        )
                     ):
                         return True
 
-                if isinstance(item, ast.Assign):
-                    if isinstance(item.value, ast.BinOp):
-                        if isinstance(item.value.left, ast.Name):
-                            target_name = item.value.left.id
-
-                        if isinstance(item.value.right, ast.Constant):
-                            factor = item.value.right.value
-
-                        if (
-                            target_name in condition_names
-                            and isinstance(
-                                item.value.op,
-                                (ast.Mult, ast.FloorDiv)
-                            )
-                            and isinstance(factor, int)
-                            and factor > 1
-                        ):
-                            if any(
-                                isinstance(target, ast.Name)
-                                and target.id == target_name
-                                for target in item.targets
-                            ):
-                                return True
+                if isinstance(child, ast.Call):
+                    if (
+                        isinstance(child.func, ast.Name)
+                        and child.func.id in {"log", "log2", "log10"}
+                    ):
+                        return True
 
             return False
 
-        def inspect_calls(statement, in_loop=False):
-            nonlocal has_sort, has_recursion
-            nonlocal has_search, has_growing_collection
-            nonlocal has_scan_in_loop
+        def is_collection_growth(statement: ast.AST) -> bool:
+            growth_methods = {
+                "append",
+                "extend",
+                "add",
+                "insert",
+                "update",
+                "setdefault",
+            }
 
-            for item in ast.walk(statement):
-                # "x in container" / "x not in container"
-                if isinstance(item, ast.Compare):
-                    for op, right in zip(item.ops, item.comparators):
-                        if (
-                            isinstance(op, (ast.In, ast.NotIn))
-                            and not is_fast_or_small_container(right)
-                        ):
-                            add_pattern("membership test")
+            for child in ast.walk(statement):
+                if isinstance(child, ast.Call):
+                    if (
+                        isinstance(child.func, ast.Attribute)
+                        and child.func.attr in growth_methods
+                    ):
+                        return True
 
-                            if in_loop:
-                                has_scan_in_loop = True
-                                add_pattern("linear scan inside loop")
-
-                                container = ast.unparse(right)
-                                add_finding(
-                                    item,
-                                    "list_membership_in_loop",
-                                    "medium",
-                                    (
-                                        f"`{ast.unparse(item)}` may check "
-                                        f"every item of `{container}` on each "
-                                        "loop pass. If it is a list, the loop "
-                                        "can become O(n^2)."
-                                    ),
-                                    (
-                                        f"If `{container}` is a list and its "
-                                        "order is not needed for this check, "
-                                        "a set makes the check much faster. "
-                                        "Confirm the results stay the same."
-                                    ),
-                                )
-
-                    continue
-
-                if not isinstance(item, ast.Call):
-                    continue
-
-                func = item.func
-
-                if isinstance(func, ast.Name):
-                    if func.id == "sorted":
-                        has_sort = True
-                        add_pattern("sorting")
-
-                        if in_loop:
-                            add_sort_in_loop_finding(item)
-
-                    if func.id == node.name:
-                        has_recursion = True
-                        add_pattern("recursion")
-
-                    if func.id in ("list", "dict", "set"):
-                        has_growing_collection = True
-                        add_pattern("collection construction")
-
-                elif isinstance(func, ast.Attribute):
-                    if func.attr == "sort":
-                        has_sort = True
-                        add_pattern("sorting")
-
-                        if in_loop:
-                            add_sort_in_loop_finding(item)
-
-                    if func.attr in ("index", "count"):
-                        has_search = True
-                        add_pattern("potential repeated search")
-
-                        if in_loop:
-                            has_scan_in_loop = True
-                            add_pattern("linear scan inside loop")
-
-                            add_finding(
-                                item,
-                                "repeated_search_in_loop",
-                                "medium",
-                                (
-                                    f"`{ast.unparse(item)}` searches a whole "
-                                    "collection on each loop pass, which "
-                                    "can make the loop O(n^2)."
-                                ),
-                                (
-                                    "Build a dictionary or set once before "
-                                    "the loop and look values up in it, if "
-                                    "that gives the same result."
-                                ),
-                            )
-
-                    if func.attr in ("append", "extend", "add", "update"):
-                        has_growing_collection = True
-                        add_pattern("collection modification")
-
-        def visit_block(statements, depth=0):
-            nonlocal loop_count, max_loop_depth
-            nonlocal has_nested_loops, has_log_loop
-            nonlocal has_unknown_while, has_growing_collection
-
-            for statement in statements:
-                if isinstance(statement, (ast.For, ast.AsyncFor)):
-                    loop_count += 1
-                    max_loop_depth = max(max_loop_depth, depth + 1)
-
-                    if depth > 0:
-                        has_nested_loops = True
-                        add_pattern("nested loops")
-                        add_nested_loop_finding(statement)
-                    else:
-                        add_pattern("loop")
-
-                    visit_block(statement.body, depth + 1)
-                    visit_block(statement.orelse, depth)
-                    continue
-
-                if isinstance(statement, ast.While):
-                    loop_count += 1
-                    max_loop_depth = max(max_loop_depth, depth + 1)
-                    add_pattern("while loop")
-
-                    if depth > 0:
-                        has_nested_loops = True
-                        add_pattern("nested loops")
-                        add_nested_loop_finding(statement)
-
-                    if is_logarithmic_while(statement):
-                        has_log_loop = True
-                        add_pattern("potential logarithmic loop")
-                    else:
-                        has_unknown_while = True
-
-                    # The while condition runs on every iteration.
-                    inspect_calls(statement.test, in_loop=True)
-                    visit_block(statement.body, depth + 1)
-                    visit_block(statement.orelse, depth)
-                    continue
-
-                # Identify collections created by literals or comprehensions.
-                if isinstance(statement, (ast.Assign, ast.AnnAssign)):
-                    value = statement.value
-
+                if isinstance(child, (ast.Assign, ast.AnnAssign)):
+                    value = child.value
                     if isinstance(
                         value,
                         (
@@ -349,139 +184,568 @@ class CodeAnalyzer:
                             ast.SetComp,
                         ),
                     ):
-                        has_growing_collection = True
-                        add_pattern("collection creation")
+                        return True
 
-                inspect_calls(statement, in_loop=depth > 0)
+            return False
 
-                # Conditions and nested blocks can contain loops too.
-                if isinstance(statement, ast.If):
-                    visit_block(statement.body, depth)
-                    visit_block(statement.orelse, depth)
+        # Infer simple collection types.
+        collection_types: dict[str, str] = {}
 
-                elif isinstance(statement, (ast.Try,)):
-                    visit_block(statement.body, depth)
-                    visit_block(statement.orelse, depth)
-                    visit_block(statement.finalbody, depth)
+        for child in ast.walk(node):
+            if isinstance(child, ast.Assign):
+                value = child.value
+                targets = child.targets
+            elif isinstance(child, ast.AnnAssign):
+                value = child.value
+                targets = [child.target]
+            else:
+                continue
 
-                    for handler in statement.handlers:
-                        visit_block(handler.body, depth)
+            if value is None:
+                continue
 
-                elif isinstance(statement, (ast.With, ast.AsyncWith)):
-                    visit_block(statement.body, depth)
+            inferred_type: str | None = None
 
-        visit_block(node.body)
+            if isinstance(value, (ast.List, ast.ListComp)):
+                inferred_type = "list"
+            elif isinstance(value, (ast.Set, ast.SetComp)):
+                inferred_type = "set"
+            elif isinstance(value, (ast.Dict, ast.DictComp)):
+                inferred_type = "dict"
+            elif isinstance(value, ast.Call) and isinstance(
+                value.func, ast.Name
+            ):
+                if value.func.id in {"set", "frozenset"}:
+                    inferred_type = "set"
+                elif value.func.id == "dict":
+                    inferred_type = "dict"
+                elif value.func.id == "list":
+                    inferred_type = "list"
 
-        if loop_count > 1 and not has_nested_loops:
-            add_pattern("multiple sequential loops")
+            if inferred_type:
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        collection_types[target.id] = inferred_type
 
-        # Order findings by line number and give each one an id.
-        findings.sort(key=lambda finding: finding["line"])
-        for number, finding in enumerate(findings, start=1):
-            finding["id"] = f"{node.name}-{number}"
+        # Loop information.
+        loop_nodes = [
+            (statement, depth)
+            for statement, depth in walk_statements(node.body)
+            if is_loop(statement)
+        ]
 
-        # TIME COMPLEXITY: structural estimates, not proof.
-        if has_recursion:
-            time_complexity = (
-                "Unknown: recursive call complexity needs analysis"
-            )
-        elif has_unknown_while:
-            time_complexity = (
-                "Unknown: while-loop termination or growth needs analysis"
-            )
-        elif has_nested_loops:
-            time_complexity = (
-                "O(n^2) or higher candidate; inspect loop bounds"
-            )
-        elif has_scan_in_loop:
-            time_complexity = (
-                "O(n^2) candidate: a linear scan (list membership, "
-                ".index or .count) runs inside a loop; ignore this if "
-                "the container is really a set or dict"
-            )
-        elif has_log_loop:
-            time_complexity = (
-                "O(log n) candidate for the recognized loop"
-            )
-        elif has_sort and loop_count:
-            time_complexity = (
-                "O(n log n) or higher; sorting and other operations"
-            )
-        elif has_sort:
-            time_complexity = "O(n log n) candidate for sorting"
-        elif loop_count or has_search:
-            time_complexity = (
-                "O(n) or higher candidate; inspect operation costs"
-            )
-        else:
-            time_complexity = (
-                "O(1) candidate; hidden growing work may exist"
+        loop_count = len(loop_nodes)
+        maximum_loop_nesting = max(
+            (depth + 1 for _, depth in loop_nodes),
+            default=0,
+        )
+
+        nested_loops = [
+            statement
+            for statement, depth in loop_nodes
+            if depth >= 1
+        ]
+        has_nested_loop = bool(nested_loops)
+
+        top_level_loops = [
+            statement
+            for statement in node.body
+            if is_loop(statement)
+        ]
+        has_sequential_loops = len(top_level_loops) > 1
+
+        nodes_inside_loops: set[int] = set()
+
+        for loop, _ in loop_nodes:
+            nodes_inside_loops.update(
+                id(child) for child in ast.walk(loop)
             )
 
-        # AUXILIARY SPACE: memory beyond the supplied input.
-        if has_recursion:
-            space_complexity = (
-                "Unknown: recursion stack may grow with input"
+        # Recursion.
+        recursive_calls = [
+            child
+            for child in ast.walk(node)
+            if (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Name)
+                and child.func.id == function_name
             )
-        elif has_growing_collection:
-            space_complexity = (
-                "Potentially O(n); collection size needs analysis"
+        ]
+        recursive = bool(recursive_calls)
+
+        # Sorting.
+        sort_calls = [
+            child
+            for child in ast.walk(node)
+            if isinstance(child, ast.Call) and is_sort_call(child)
+        ]
+        sorting = bool(sort_calls)
+
+        sort_inside_loop = [
+            call for call in sort_calls
+            if id(call) in nodes_inside_loops
+        ]
+
+        # Repeated index/count scans.
+        repeated_scan_calls = [
+            child
+            for child in ast.walk(node)
+            if (
+                isinstance(child, ast.Call)
+                and is_index_or_count_call(child)
+                and id(child) in nodes_inside_loops
             )
-        else:
-            space_complexity = (
-                "O(1) candidate, excluding input and returned output"
+        ]
+
+        # Membership checks.
+        membership_inside_loop: list[ast.Compare] = []
+        membership_outside_loop: list[ast.Compare] = []
+
+        for child in ast.walk(node):
+            if not isinstance(child, ast.Compare):
+                continue
+
+            membership_pairs = [
+                (operator, comparator)
+                for operator, comparator in zip(
+                    child.ops,
+                    child.comparators,
+                )
+                if isinstance(operator, (ast.In, ast.NotIn))
+            ]
+
+            if not membership_pairs:
+                continue
+
+            is_literal_collection = any(
+                isinstance(comparator, (ast.Tuple, ast.List, ast.Set))
+                for _, comparator in membership_pairs
             )
+
+            if is_literal_collection:
+                continue
+
+            collection_name: str | None = None
+
+            for _, comparator in membership_pairs:
+                if isinstance(comparator, ast.Name):
+                    collection_name = comparator.id
+                    break
+
+            collection_type = (
+                collection_types.get(collection_name)
+                if collection_name
+                else None
+            )
+
+            if id(child) in nodes_inside_loops:
+                if collection_type not in {"set", "dict"}:
+                    membership_inside_loop.append(child)
+            else:
+                membership_outside_loop.append(child)
+
+        collection_growth = is_collection_growth(node)
+
+        # While-loop classification.
+        while_nodes = [
+            statement
+            for statement, _ in loop_nodes
+            if isinstance(statement, ast.While)
+        ]
+
+        logarithmic_while_nodes = [
+            statement
+            for statement in while_nodes
+            if is_logarithmic_while(statement)
+        ]
+
+        unknown_while_nodes = [
+            statement
+            for statement in while_nodes
+            if statement not in logarithmic_while_nodes
+        ]
+
+        logarithmic_while = bool(logarithmic_while_nodes)
+        unknown_while = bool(unknown_while_nodes)
+
+        # Comprehension detection.
+        comprehension_types = (
+            ast.ListComp,
+            ast.SetComp,
+            ast.DictComp,
+            ast.GeneratorExp,
+        )
+
+        comprehensions = [
+            child
+            for child in ast.walk(node)
+            if isinstance(child, comprehension_types)
+        ]
+
+        has_comprehension = bool(comprehensions)
+
+        has_nested_comprehension = any(
+            any(
+                isinstance(descendant, comprehension_types)
+                for descendant in ast.walk(comprehension)
+                if descendant is not comprehension
+            )
+            or len(comprehension.generators) > 1
+            for comprehension in comprehensions
+        )
+
+        # Patterns.
+        if loop_count:
+            add_pattern("loop")
+
+        if has_nested_loop:
+            add_pattern("nested_loops", "nested loops")
+
+        if has_sequential_loops:
+            add_pattern(
+                "sequential_loops",
+                "multiple sequential loops",
+            )
+
+        if recursive:
+            add_pattern("recursion")
+
+        if logarithmic_while:
+            add_pattern(
+                "logarithmic_while_candidate",
+                "potential logarithmic loop",
+            )
+
+        if unknown_while:
+            add_pattern("while_loop")
+
+        if membership_inside_loop:
+            add_pattern(
+                "membership_scan",
+                "linear scan inside loop",
+            )
+
+        if membership_outside_loop:
+            add_pattern(
+                "membership_scan",
+                "membership test",
+            )
+
+        if repeated_scan_calls:
+            add_pattern(
+                "repeated_index_or_count",
+                "linear scan inside loop",
+            )
+
+        if sorting:
+            add_pattern("sorting")
+
+        if collection_growth:
+            add_pattern("collection_growth")
+
+        if has_comprehension:
+            add_pattern("comprehension")
+
+        if has_nested_comprehension:
+            add_pattern("nested_comprehension")
+
+        # Findings.
+        if nested_loops:
+            inner_loop = min(
+                nested_loops,
+                key=lambda item: getattr(item, "lineno", node.lineno),
+            )
+            add_finding(
+                inner_loop,
+                "nested_loops",
+                "medium",
+                "Nested loops were detected. Their combined iterations may grow rapidly as input size increases.",
+                "Check whether the inner loop can be replaced with a set, dictionary, lookup table, or a more efficient algorithm.",
+            )
+
+        if membership_inside_loop:
+            comparison = min(
+                membership_inside_loop,
+                key=lambda item: getattr(item, "lineno", node.lineno),
+            )
+
+            collection_name = None
+            for operator, comparator in zip(
+                comparison.ops,
+                comparison.comparators,
+            ):
+                if isinstance(operator, (ast.In, ast.NotIn)):
+                    if isinstance(comparator, ast.Name):
+                        collection_name = comparator.id
+                    break
+
+            collection_type = (
+                collection_types.get(collection_name)
+                if collection_name
+                else None
+            )
+
+            category = (
+                "list_membership_in_loop"
+                if collection_type == "list"
+                else "membership_scan"
+            )
+
+            message = (
+                f"A membership check against '{collection_name}' "
+                "inside a loop may repeatedly scan the collection."
+                if collection_name
+                else
+                "A membership check inside a loop may repeatedly "
+                "scan a collection."
+            )
+
+            add_finding(
+                comparison,
+                category,
+                "medium",
+                message,
+                "Consider using a set or dictionary for faster membership checks when ordering and duplicate requirements allow it.",
+            )
+
+        if repeated_scan_calls:
+            call = min(
+                repeated_scan_calls,
+                key=lambda item: getattr(item, "lineno", node.lineno),
+            )
+
+            method_name = (
+                ast.unparse(call.func)
+                if hasattr(ast, "unparse")
+                else "index() or count()"
+            )
+
+            add_finding(
+                call,
+                "repeated_search_in_loop",
+                "medium",
+                f"The {method_name} operation inside a loop may repeatedly scan a collection.",
+                "Consider building a lookup dictionary or counting values in one pass.",
+            )
+
+        if sorting:
+            for call in sort_calls:
+                inside_loop = id(call) in nodes_inside_loops
+
+                sort_operation = (
+                    ast.unparse(call.func)
+                    if hasattr(ast, "unparse")
+                    else (
+                        "sorted"
+                        if isinstance(call.func, ast.Name)
+                        else "sort"
+                    )
+                )
+
+                add_finding(
+                    call,
+                    "sort_in_loop" if inside_loop else "sorting",
+                    "medium" if inside_loop else "info",
+                    (
+                        f"The '{sort_operation}' operation inside a loop "
+                        "may repeatedly sort collections, increasing "
+                        "runtime significantly."
+                        if inside_loop
+                        else
+                        f"The '{sort_operation}' operation was detected. "
+                        "Sorting commonly requires O(n log n) time."
+                    ),
+                    "Check whether the entire collection needs to be sorted or whether a partial selection or single-pass solution is sufficient.",
+                )
+
+        if recursive:
+            add_finding(
+                recursive_calls[0],
+                "recursion",
+                "medium",
+                "A recursive call to the current function was detected.",
+                "Check recursion depth, repeated subproblems, and whether memoization or an iterative implementation would improve scalability.",
+            )
+
+        for while_node in logarithmic_while_nodes:
+            add_finding(
+                while_node,
+                "while_loop",
+                "info",
+                "The while loop contains a division-based update that may reduce the search space logarithmically.",
+                "Verify that the loop variable is consistently reduced and that the termination condition is correct.",
+            )
+
+        for while_node in unknown_while_nodes:
+            add_finding(
+                while_node,
+                "while_loop",
+                "medium",
+                "A while loop was detected, but static analysis cannot reliably determine its iteration count.",
+                "Review the loop's termination condition and test its behavior with large and boundary inputs.",
+            )
+
+        if collection_growth:
+            growth_target = next(
+                (
+                    child
+                    for child in ast.walk(node)
+                    if (
+                        isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Attribute)
+                        and child.func.attr in {
+                            "append",
+                            "extend",
+                            "add",
+                            "insert",
+                            "update",
+                            "setdefault",
+                        }
+                    )
+                ),
+                node,
+            )
+
+            add_finding(
+                growth_target,
+                "collection_growth",
+                "info",
+                "The function appears to grow or construct a collection dynamically. Auxiliary memory may increase with input size.",
+                "Check whether the growing collection is necessary and whether its size can be bounded or processed incrementally.",
+            )
+
+        if not findings:
+            add_finding(
+                node,
+                "general",
+                "info",
+                "No major scalability pattern was identified by the current static checks.",
+                "Validate performance with representative inputs and runtime benchmarks.",
+            )
+
+        findings.sort(key=lambda item: item["line"])
+
+        # Centralized complexity estimation.
+        recursion_pattern = None
+
+        if recursive_calls:
+            recursion_pattern = (
+                f"Recursive call to '{function_name}' detected."
+            )
+
+        complexity_estimate = self.complexity_estimator.estimate(
+            loop_count=loop_count,
+            maximum_loop_nesting=maximum_loop_nesting,
+            has_linear_scan_in_loop=bool(
+                membership_inside_loop or repeated_scan_calls
+            ),
+            has_sort=sorting,
+            has_recursion=recursive,
+            has_logarithmic_loop=logarithmic_while,
+            has_unknown_while=unknown_while,
+            grows_collection=collection_growth,
+            recursion_pattern=recursion_pattern,
+            has_sort_in_loop=bool(sort_inside_loop),
+            has_comprehension=has_comprehension,
+            has_nested_comprehension=has_nested_comprehension,
+            has_quadratic_operation=bool(repeated_scan_calls),
+        )
+
+        # Preserve the original public output wording.
+        legacy_space_estimate = (
+            "Potentially O(n); collection size needs analysis"
+            if collection_growth
+            else complexity_estimate.space
+        )
 
         return {
-            "function": node.name,
+            "function": function_name,
             "line": node.lineno,
             "loop_count": loop_count,
-            "maximum_loop_nesting": max_loop_depth,
-            "time_complexity_estimate": time_complexity,
-            "auxiliary_space_estimate": space_complexity,
+            "maximum_loop_nesting": maximum_loop_nesting,
+            "time_complexity_estimate": complexity_estimate.time,
+            "auxiliary_space_estimate": legacy_space_estimate,
+            "complexity_analysis": complexity_estimate.to_dict(),
             "patterns": patterns,
             "findings": findings,
-            "confidence": "heuristic",
+            "confidence": complexity_estimate.confidence,
             "note": (
-                "Static estimate. Exact complexity requires reasoning "
-                "about loop bounds, data sizes, called functions, "
-                "recursion and collection growth."
+                "These estimates are based on static AST patterns. "
+                "They are not measured runtime or memory guarantees."
             ),
         }
 
 
-def main():
+def main() -> int:
     if len(sys.argv) != 2:
-        print(json.dumps({
-            "status": "error",
-            "error": "Usage: python analyzer.py path/to/file.py"
-        }, indent=2))
-        sys.exit(1)
+        print(
+            json.dumps({
+                "status": "error",
+                "error": "Usage: python analyzer.py <python_file>",
+            })
+        )
+        return 2
+
+    file_path = Path(sys.argv[1])
+
+    if not file_path.exists():
+        print(
+            json.dumps({
+                "status": "error",
+                "error": f"File not found: {file_path}",
+            })
+        )
+        return 1
+
+    if not file_path.is_file():
+        print(
+            json.dumps({
+                "status": "error",
+                "error": f"Not a file: {file_path}",
+            })
+        )
+        return 1
 
     try:
-        with open(sys.argv[1], "r", encoding="utf-8") as file:
-            source = file.read()
+        source = file_path.read_text(encoding="utf-8")
+        analyzer = CodeAnalyzer(source)
+        results = analyzer.analyze()
 
-        result = {
+        print(json.dumps({
             "status": "success",
-            "functions": CodeAnalyzer(source).analyze()
-        }
+            "functions": results,
+        }, indent=2))
 
-    except SyntaxError as error:
-        result = {
-            "status": "error",
-            "error": "Invalid Python syntax",
-            "line": error.lineno
-        }
+        return 0
 
-    except OSError as error:
-        result = {
-            "status": "error",
-            "error": str(error)
-        }
+    except SyntaxError as exc:
+        print(
+            json.dumps({
+                "status": "error",
+                "error": f"Syntax error: {exc}",
+                "line": exc.lineno,
+            })
+        )
+        return 1
 
-    print(json.dumps(result, indent=2))
+    except (OSError, UnicodeError) as exc:
+        print(
+            json.dumps({
+                "status": "error",
+                "error": str(exc),
+            })
+        )
+        return 1
+
+    except Exception as exc:
+        print(
+            json.dumps({
+                "status": "error",
+                "error": f"Analysis failed: {exc}",
+            })
+        )
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
