@@ -373,18 +373,22 @@ function activate(context) {
         const recommendations = result.recommendations || [];
 
         if (!recommendations.length) {
-            return 'No data structure improvements found — code looks efficient!';
+            return 'No data structure improvements found - code looks efficient!';
         }
 
         return recommendations.map((r, i) => {
             const lines = [`${i + 1}. ${r.function || 'Unknown function'} (line ${r.line || '?'})`];
 
-            if (r.issue) lines.push(`   Issue: ${r.issue}`);
-            if (r.current_structure) lines.push(`   Currently using: ${r.current_structure}`);
-            if (r.recommended_structure) lines.push(`   Recommended: ${r.recommended_structure}`);
+            const issue = r.issue || r.current_pattern;
+            const current = r.current_structure;
+            const recommended = r.recommended_structure || r.recommendation;
+
+            if (issue) lines.push(`   Issue: ${issue}`);
+            if (current) lines.push(`   Currently using: ${current}`);
+            if (recommended) lines.push(`   Recommended: ${recommended}`);
             if (r.reason) lines.push(`   Why: ${r.reason}`);
             if (r.complexity_before && r.complexity_after) {
-                lines.push(`   Complexity: ${r.complexity_before} → ${r.complexity_after}`);
+                lines.push(`   Complexity: ${r.complexity_before} -> ${r.complexity_after}`);
             }
 
             return lines.join('\n');
