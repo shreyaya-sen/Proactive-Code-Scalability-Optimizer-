@@ -40,6 +40,18 @@
       {
         "command": "codescale-ai.analyzeCurrentFile",
         "title": "CodeScale AI: Analyze Current File"
+      },
+      {
+        "command": "codescale-ai.benchmarkFunction",
+        "title": "CodeScale AI: Benchmark Function"
+      },
+      {
+        "command": "codescale-ai.suggestDSA",
+        "title": "CodeScale AI: Suggest Data Structures"
+      },
+      {
+        "command": "codescale-ai.suggestTests",
+        "title": "CodeScale AI: Suggest Tests"
       }
     ]
   },

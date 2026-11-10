@@ -1,0 +1,1 @@
+# CodeScale AI — analyzer package
