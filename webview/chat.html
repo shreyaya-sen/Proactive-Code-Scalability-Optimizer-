@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src {{CSP_SOURCE}} 'unsafe-inline'; script-src 'nonce-{{NONCE}}'; img-src {{CSP_SOURCE}} data:;"
+    >
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        :root {
+            --blue-950: #071629;
+            --blue-900: #0b203b;
+            --blue-800: #12365c;
+            --blue-700: #18518a;
+            --blue-500: #388bdf;
+            --blue-300: #8cc8ff;
+            --blue-200: #c2e2ff;
+            --blue-100: #eaf5ff;
+            --text: #eaf4ff;
+            --muted: #9eb7d1;
+            --border: #244568;
+            --green-700: #1a6b3a;
+            --green-border: #2a9e57;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            color: var(--text);
+            background: var(--blue-950);
+            font-family: var(--vscode-font-family);
+            font-size: 13px;
+        }
+
+        .app-title {
+            margin: 0 0 5px;
+            font-size: 21px;
+            font-weight: 650;
+            letter-spacing: -0.5px;
+        }
+
+        .app-subtitle {
+            margin-bottom: 18px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .panel {
+            margin-bottom: 14px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--blue-900);
+        }
+
+        .panel-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+            padding: 12px;
+            border: 0;
+            border-radius: 0;
+            color: var(--text);
+            background: var(--blue-800);
+            text-align: left;
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .panel-heading:hover {
+            background: var(--blue-700);
+        }
+
+        .chevron {
+            color: var(--blue-200);
+            transition: transform 180ms ease;
+        }
+
+        .panel-heading[aria-expanded="false"] .chevron {
+            transform: rotate(-90deg);
+        }
+
+        .panel-content { padding: 14px; }
+
+        .panel-content[hidden] {
+            display: none;
+        }
+
+        /* CodeScale Mascot Stage */
+
+        .mascot-stage {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 350px;
+            overflow: hidden;
+            border: 1px solid #d5d8dc;
+            border-radius: 9px;
+            background: linear-gradient(
+                180deg,
+                #c6cbd1 0%,
+                #d3d7db 55%,
+                #dcdfe2 100%
+            );
+        }
+
+        .mascot-scaler {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 560px;
+            height: 800px;
+            flex: none;
+            transform-origin: center center;
+        }
+
+        .mascot-fig {
+            position: relative;
+            width: 560px;
+            height: 800px;
+            animation: mascot-bob 4s ease-in-out infinite;
+        }
+
+        .mascot-fig > * {
+            position: absolute;
+        }
+
+        .mascot-shadow {
+            left: 120px;
+            top: 762px;
+            width: 320px;
+            height: 34px;
+            border-radius: 50%;
+            background: radial-gradient(
+                ellipse at center,
+                rgba(70,80,90,.35) 0%,
+                rgba(70,80,90,0) 70%
+            );
+            animation: mascot-shadow 4s ease-in-out infinite;
+        }
+
+        .mascot-leg {
+            top: 690px;
+            width: 82px;
+            height: 88px;
+            border-radius: 30px 30px 40px 40px;
+            background: linear-gradient(
+                90deg,
+                #e6dccf,
+                #f6efe5 45%,
+                #e9e0d3
+            );
+            box-shadow: inset 0 -8px 12px rgba(150,130,110,.18);
+        }
+
+        .mascot-leg.l { left: 182px; }
+        .mascot-leg.r { left: 304px; }
+
+        .mascot-arm {
+            top: 462px;
+            width: 86px;
+            height: 214px;
+            border-radius: 44px 44px 50px 50px;
+            background: linear-gradient(
+                90deg,
+                #f7f0e6,
+                #efe6da 60%,
+                #e2d8ca
+            );
+            box-shadow:
+                inset 0 -10px 16px rgba(150,130,110,.2),
+                0 6px 14px rgba(90,100,110,.12);
+        }
+
+        .mascot-arm.l {
+            left: 112px;
+            transform: rotate(18deg);
+        }
+
+        .mascot-arm.r {
+            left: 362px;
+            transform: rotate(-18deg);
+            background: linear-gradient(
+                270deg,
+                #f7f0e6,
+                #efe6da 60%,
+                #e2d8ca
+            );
+        }
+
+        .mascot-body {
+            left: 172px;
+            top: 436px;
+            width: 216px;
+            height: 270px;
+            border-radius: 46% 46% 34% 34% / 22% 22% 16% 16%;
+            background: radial-gradient(
+                ellipse at 40% 25%,
+                #fffaf2 0%,
+                #f4ece1 55%,
+                #e6dccf 100%
+            );
+            box-shadow:
+                inset 0 -14px 22px rgba(150,130,110,.2),
+                0 10px 20px rgba(90,100,110,.12);
+        }
+
+        .mascot-helmet {
+            left: 9px;
+            top: 4px;
+            width: 542px;
+            height: 450px;
+            border-radius: 50% 50% 46% 46% / 64% 64% 36% 36%;
+            background: radial-gradient(
+                ellipse at 38% 22%,
+                #fffefb 0%,
+                #f7f1e7 38%,
+                #ebe2d5 75%,
+                #ddd2c3 100%
+            );
+            box-shadow:
+                inset -18px -22px 36px rgba(150,128,105,.22),
+                inset 14px 10px 30px rgba(255,255,255,.7),
+                0 18px 28px rgba(90,100,110,.15);
+        }
+
+        .mascot-face {
+            left: 56px;
+            top: 252px;
+            width: 448px;
+            height: 202px;
+            border-radius: 46% 46% 50% 50% / 26% 26% 74% 74%;
+            background: radial-gradient(
+                ellipse at 50% 60%,
+                #f7f0e6 0%,
+                #f0e7da 70%,
+                #e8ddcf 100%
+            );
+            box-shadow:
+                inset 0 16px 20px -6px rgba(120,98,75,.38),
+                inset 0 -6px 12px rgba(150,130,110,.12);
+            overflow: hidden;
+        }
+
+        .mascot-face::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            box-shadow: inset 0 0 0 2px rgba(255,255,255,.25);
+        }
+
+        .mascot-brand {
+            left: 0;
+            width: 560px;
+            top: 152px;
+            text-align: center;
+            font: 800 50px/1 "Nunito", "Varela Round",
+                  ui-rounded, "Segoe UI", system-ui, sans-serif;
+            letter-spacing: .5px;
+            color: #6f6b66;
+            text-shadow: 0 1px 0 rgba(255,255,255,.5);
+        }
+
+        .mascot-eye {
+            top: 276px;
+            width: 58px;
+            height: 82px;
+            border-radius: 50%;
+            background: radial-gradient(
+                ellipse at 38% 30%,
+                #4a4a4a 0%,
+                #161616 28%,
+                #000 70%
+            );
+            box-shadow: 0 2px 4px rgba(0,0,0,.25);
+            animation: mascot-blink 5s infinite;
+            transform-origin: center;
+        }
+
+        .mascot-eye::after {
+            content: "";
+            position: absolute;
+            left: 14px;
+            top: 14px;
+            width: 12px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255,255,255,.3);
+            filter: blur(1px);
+        }
+
+        .mascot-eye.l { left: 122px; }
+        .mascot-eye.r { left: 384px; }
+
+        .mascot-blush {
+            top: 330px;
+            width: 92px;
+            height: 58px;
+            border-radius: 50%;
+            background: radial-gradient(
+                ellipse at center,
+                rgba(240,170,150,.55) 0%,
+                rgba(240,170,150,0) 70%
+            );
+        }
+
+        .mascot-blush.l { left: 70px; }
+        .mascot-blush.r { left: 400px; }
+
+        .mascot-mouth {
+            left: 270px;
+            top: 338px;
+            width: 22px;
+            height: 8px;
+            border-top: 3px solid #6a5f58;
+            border-radius: 50% 50% 0 0;
+        }
+
+        @keyframes mascot-bob {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        @keyframes mascot-shadow {
+            0%, 100% {
+                transform: scaleX(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scaleX(.92);
+                opacity: .8;
+            }
+        }
+
+        @keyframes mascot-blink {
+            0%, 92%, 100% { transform: scaleY(1); }
+            95% { transform: scaleY(.08); }
+        }
+
+        .robot-caption {
+            margin: 12px 0;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.5;
+            text-align: center;
+        }
+
+        .primary-button {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #69adf0;
+            border-radius: 6px;
+            color: #fff;
+            background: #1765ad;
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .primary-button:hover {
+            background: #247bc9;
+        }
+
+        #inspectStatus {
+            margin-top: 9px;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        /* Phase 2 analysis buttons */
+
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .analysis-btn {
+            padding: 9px 10px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            color: var(--blue-100);
+            background: var(--blue-800);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            line-height: 1.4;
+        }
+
+        .analysis-btn:hover {
+            background: var(--blue-700);
+            border-color: var(--blue-500);
+        }
+
+        .analysis-btn .btn-icon {
+            display: block;
+            font-size: 18px;
+            margin-bottom: 4px;
+        }
+
+        .analysis-result {
+            margin-top: 11px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            background: var(--blue-950);
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--blue-100);
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            min-height: 36px;
+        }
+
+        .analysis-result[hidden] { display: none; }
+
+        .result-label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .4px;
+            color: var(--blue-300);
+            text-transform: uppercase;
+        }
+
+        #context, #attachments {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 10px;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 100%;
+            padding: 6px 8px;
+            overflow-wrap: anywhere;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--blue-100);
+            background: var(--blue-950);
+            font-size: 11px;
+        }
+
+        .secondary-button {
+            padding: 7px 9px;
+            border: 1px solid #315b83;
+            border-radius: 5px;
+            color: var(--blue-100);
+            background: #12365c;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .secondary-button:hover {
+            background: #18518a;
+        }
+
+        #messages {
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+            max-height: 340px;
+            margin: 12px 0;
+            overflow-y: auto;
+        }
+
+        .message {
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            background: var(--blue-950);
+            color: var(--blue-100);
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            line-height: 1.5;
+        }
+
+        textarea {
+            display: block;
+            width: 100%;
+            min-height: 95px;
+            padding: 10px;
+            resize: vertical;
+            border: 1px solid #315b83;
+            border-radius: 7px;
+            outline: none;
+            color: var(--text);
+            background: var(--blue-950);
+            font: inherit;
+            line-height: 1.5;
+        }
+
+        textarea:focus {
+            border-color: var(--blue-500);
+        }
+
+        textarea::placeholder {
+            color: #8da8c5;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            margin-top: 9px;
+        }
+
+        .toolbar button { flex: 1; }
+
+        button:focus-visible {
+            outline: 2px solid var(--blue-300);
+            outline-offset: 2px;
+        }
+
+        button:disabled {
+            opacity: .6;
+            cursor: wait;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .mascot-fig,
+            .mascot-shadow,
+            .mascot-eye {
+                animation: none;
+            }
+
+            .chevron { transition: none; }
+        }
+    </style>
+</head>
+
+<body>
+    <h1 class="app-title">CodeScale AI</h1>
+    <div class="app-subtitle">
+        Code analysis and AI-assisted development
+    </div>
+
+    <!-- Robot Assistant panel -->
+    <section class="panel">
+        <button
+            class="panel-heading"
+            id="robotToggle"
+            aria-expanded="true"
+            aria-controls="robotContent"
+        >
+            <span>Robot Assistant</span>
+            <span class="chevron" aria-hidden="true">▼</span>
+        </button>
+
+        <div class="panel-content" id="robotContent">
+            <div class="mascot-stage" id="mascotStage">
+                <div class="mascot-scaler" id="mascotScaler">
+                    <div class="mascot-fig">
+                        <div class="mascot-shadow"></div>
+                        <div class="mascot-leg l"></div>
+                        <div class="mascot-leg r"></div>
+                        <div class="mascot-arm l"></div>
+                        <div class="mascot-arm r"></div>
+                        <div class="mascot-body"></div>
+                        <div class="mascot-helmet"></div>
+                        <div class="mascot-brand">CodeScale</div>
+                        <div class="mascot-face"></div>
+                        <div class="mascot-blush l"></div>
+                        <div class="mascot-blush r"></div>
+                        <div class="mascot-eye l"></div>
+                        <div class="mascot-eye r"></div>
+                        <div class="mascot-mouth"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="robot-caption">
+                Your CodeScale AI assistant
+            </div>
+
+            <button class="primary-button" id="inspectCode">
+                Inspect Code
+            </button>
+
+            <div id="inspectStatus" role="status" aria-live="polite">
+                Click Inspect Code to analyze the target Python file.
+            </div>
+        </div>
+    </section>
+
+    <!-- Phase 2 Analysis panel -->
+    <section class="panel">
+        <button
+            class="panel-heading"
+            id="analysisToggle"
+            aria-expanded="true"
+            aria-controls="analysisContent"
+        >
+            <span>Analysis Tools</span>
+            <span class="chevron" aria-hidden="true">▼</span>
+        </button>
+
+        <div class="panel-content" id="analysisContent">
+            <div class="analysis-grid">
+                <button class="analysis-btn" id="btnSuggestTests">
+                    <span class="btn-icon">🧪</span>
+                    Suggest Tests
+                </button>
+                <button class="analysis-btn" id="btnSuggestDSA">
+                    <span class="btn-icon">🗂️</span>
+                    Suggest Data Structures
+                </button>
+                <button class="analysis-btn" id="btnBenchmark">
+                    <span class="btn-icon">⏱️</span>
+                    Benchmark Function
+                </button>
+                <button class="analysis-btn" id="btnComplexity">
+                    <span class="btn-icon">📊</span>
+                    Analyze Complexity
+                </button>
+            </div>
+
+            <div class="analysis-result" id="analysisResult" hidden>
+                <span class="result-label" id="analysisResultLabel"></span>
+                <span id="analysisResultText"></span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Chat panel -->
+    <section class="panel">
+        <button
+            class="panel-heading"
+            id="chatToggle"
+            aria-expanded="true"
+            aria-controls="chatContent"
+        >
+            <span>Chat with CodeScale AI</span>
+            <span class="chevron" aria-hidden="true">▼</span>
+        </button>
+
+        <div class="panel-content" id="chatContent">
+            <div id="context">
+                <span class="chip">
+                    Target: <strong id="target">Loading...</strong>
+                </span>
+                <button class="secondary-button" id="changeTarget">
+                    Change target
+                </button>
+            </div>
+
+            <div id="attachments"></div>
+
+            <div id="messages" aria-live="polite">
+                <div class="message">
+                    Ask me to create files, edit code, or clean a CSV dataset.
+                </div>
+            </div>
+
+            <textarea
+                id="prompt"
+                placeholder="Describe what you want CodeScale AI to do..."
+                aria-label="Message CodeScale AI"
+            ></textarea>
+
+            <div class="toolbar">
+                <button class="secondary-button" id="attach">
+                    + Attach files
+                </button>
+                <button class="primary-button" id="send">Generate</button>
+            </div>
+        </div>
+    </section>
+
+    <script nonce="{{NONCE}}">
+        const vscode = acquireVsCodeApi();
+
+        const promptBox = document.getElementById('prompt');
+        const sendButton = document.getElementById('send');
+        const attachButton = document.getElementById('attach');
+        const targetButton = document.getElementById('changeTarget');
+        const targetLabel = document.getElementById('target');
+        const attachmentsBox = document.getElementById('attachments');
+        const messages = document.getElementById('messages');
+
+        let busy = false;
+
+        // ---------------------------------------------------------------
+        // Mascot scaling
+        // ---------------------------------------------------------------
+
+        function fitMascot() {
+            const stage = document.getElementById('mascotStage');
+            const scaler = document.getElementById('mascotScaler');
+
+            if (!stage || !scaler) return;
+
+            const scale = Math.min(
+                (stage.clientWidth - 8) / 560,
+                (stage.clientHeight - 8) / 800
+            );
+
+            scaler.style.transform =
+                'translate(-50%, -50%) scale(' + scale + ')';
+        }
+
+        window.addEventListener('resize', fitMascot);
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const mascotObserver = new ResizeObserver(fitMascot);
+            mascotObserver.observe(document.getElementById('mascotStage'));
+        }
+
+        fitMascot();
+
+        // ---------------------------------------------------------------
+        // Panel collapse
+        // ---------------------------------------------------------------
+
+        function setupCollapse(buttonId, contentId) {
+            const button = document.getElementById(buttonId);
+            const content = document.getElementById(contentId);
+
+            button.addEventListener('click', () => {
+                const expanded =
+                    button.getAttribute('aria-expanded') === 'true';
+
+                button.setAttribute('aria-expanded', String(!expanded));
+                content.hidden = expanded;
+
+                if (!expanded && contentId === 'robotContent') {
+                    requestAnimationFrame(fitMascot);
+                }
+            });
+        }
+
+        setupCollapse('robotToggle', 'robotContent');
+        setupCollapse('analysisToggle', 'analysisContent');
+        setupCollapse('chatToggle', 'chatContent');
+
+        // ---------------------------------------------------------------
+        // Inspect Code (existing)
+        // ---------------------------------------------------------------
+
+        const inspectButton = document.getElementById('inspectCode');
+        const inspectStatus = document.getElementById('inspectStatus');
+
+        inspectButton.addEventListener('click', () => {
+            inspectButton.disabled = true;
+            inspectStatus.textContent = 'Analyzing...';
+            vscode.postMessage({ command: 'inspectCode' });
+        });
+
+        // ---------------------------------------------------------------
+        // Analysis Tools (Phase 2 buttons)
+        // ---------------------------------------------------------------
+
+        const analysisResult = document.getElementById('analysisResult');
+        const analysisResultLabel = document.getElementById('analysisResultLabel');
+        const analysisResultText = document.getElementById('analysisResultText');
+
+        function setAnalysisBusy(busy) {
+            ['btnSuggestTests', 'btnSuggestDSA', 'btnBenchmark', 'btnComplexity']
+                .forEach(id => {
+                    document.getElementById(id).disabled = busy;
+                });
+        }
+
+        function showAnalysisResult(label, text) {
+            analysisResultLabel.textContent = label;
+            analysisResultText.textContent = text;
+            analysisResult.hidden = false;
+        }
+
+        document.getElementById('btnSuggestTests').addEventListener('click', () => {
+            setAnalysisBusy(true);
+            showAnalysisResult('Suggest Tests', 'Running...');
+            vscode.postMessage({ command: 'phase2', operation: 'suggest_tests' });
+        });
+
+        document.getElementById('btnSuggestDSA').addEventListener('click', () => {
+            setAnalysisBusy(true);
+            showAnalysisResult('Suggest Data Structures', 'Running...');
+            vscode.postMessage({ command: 'phase2', operation: 'recommend_dsa' });
+        });
+
+        document.getElementById('btnBenchmark').addEventListener('click', () => {
+            setAnalysisBusy(true);
+            showAnalysisResult('Benchmark Function', 'Enter function name in the prompt that appeared...');
+            vscode.postMessage({ command: 'phase2', operation: 'benchmark' });
+        });
+
+        document.getElementById('btnComplexity').addEventListener('click', () => {
+            setAnalysisBusy(true);
+            showAnalysisResult('Analyze Complexity', 'Running...');
+            vscode.postMessage({ command: 'phase2', operation: 'analyze' });
+        });
+
+        // ---------------------------------------------------------------
+        // Chat
+        // ---------------------------------------------------------------
+
+        function addMessage(text) {
+            const element = document.createElement('div');
+            element.className = 'message';
+            element.textContent = text;
+            messages.appendChild(element);
+            element.scrollIntoView({ block: 'end' });
+        }
+
+        function sendMessage() {
+            const text = promptBox.value.trim();
+
+            if (!text || busy) return;
+
+            addMessage('You: ' + text);
+
+            promptBox.value = '';
+            busy = true;
+
+            sendButton.disabled = true;
+            sendButton.textContent = 'Working...';
+
+            vscode.postMessage({ command: 'sendMessage', text });
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+
+        attachButton.addEventListener('click', () => {
+            vscode.postMessage({ command: 'attachFiles' });
+        });
+
+        targetButton.addEventListener('click', () => {
+            vscode.postMessage({ command: 'chooseTarget' });
+        });
+
+        promptBox.addEventListener('keydown', event => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // ---------------------------------------------------------------
+        // Messages from extension host
+        // ---------------------------------------------------------------
+
+        window.addEventListener('message', event => {
+            const data = event.data;
+
+            if (data.command === 'state') {
+                targetLabel.textContent = data.target;
+                attachmentsBox.replaceChildren();
+
+                for (const name of data.attachments) {
+                    const chip = document.createElement('span');
+                    chip.className = 'chip';
+                    chip.textContent = name + ' ×';
+                    chip.title = 'Click to remove this attachment';
+                    chip.style.cursor = 'pointer';
+
+                    chip.addEventListener('click', () => {
+                        vscode.postMessage({ command: 'removeAttachment', name });
+                    });
+
+                    attachmentsBox.appendChild(chip);
+                }
+            }
+
+            if (data.command === 'inspectResult') {
+                inspectStatus.textContent = data.text;
+                inspectButton.disabled = false;
+            }
+
+            if (data.command === 'phase2Result') {
+                showAnalysisResult(data.label, data.text);
+                setAnalysisBusy(false);
+            }
+
+            if (data.command === 'response') {
+                addMessage('CodeScale AI: ' + data.text);
+                busy = false;
+                sendButton.disabled = false;
+                sendButton.textContent = 'Generate';
+            }
+        });
+    </script>
+</body>
+</html>
