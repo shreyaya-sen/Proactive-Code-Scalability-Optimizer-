@@ -1,6 +1,5 @@
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -34,7 +33,7 @@ class ComplexityEstimator:
         has_logarithmic_loop: bool = False,
         has_unknown_while: bool = False,
         grows_collection: bool = False,
-        recursion_pattern: Optional[str] = None,
+        recursion_pattern: str | None = None,
         has_sort_in_loop: bool = False,
         has_comprehension: bool = False,
         has_nested_comprehension: bool = False,

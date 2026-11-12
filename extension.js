@@ -4,6 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const Groq = require('groq-sdk').default;
+const { registerVerifyCommand } = require('./verify');
+const { registerPhase4Commands } = require('./phase4');
+const { recordHistory, registerHistoryCommands } = require('./history');
 
 const MODEL = 'openai/gpt-oss-120b';
 const SECRET_KEY = 'codescale-ai.groqApiKey';
@@ -27,6 +30,23 @@ function activate(context) {
 
     function getClient(apiKey) {
         return new Groq({ apiKey });
+    }
+
+    function countFindings(data) {
+        return (data.functions || []).reduce(
+            (sum, fn) => sum + (fn.findings || []).length,
+            0
+        );
+    }
+
+    function benchmarkSummary(name, result) {
+        const median = result.measurements?.[0]?.median_seconds;
+
+        return `${name}(): ${
+            median != null
+                ? (median * 1000).toFixed(3) + ' ms median'
+                : 'no timing returned'
+        }`;
     }
 
     function languageFromName(name) {
@@ -226,11 +246,12 @@ function activate(context) {
     }
 
     // ---------------------------------------------------------------
-    // Phase 2 Python CLI integration
+    // Phase 2 / Phase 4 Python CLI integration
     // ---------------------------------------------------------------
 
     function runPhase2(request) {
         const engine = enginePython();
+        const limitMs = Number(request.ui_timeout_ms) || 60000;
 
         return new Promise((resolve, reject) => {
             const child = cp.spawn(
@@ -254,8 +275,8 @@ function activate(context) {
                 if (settled) return;
                 settled = true;
                 child.kill();
-                reject(new Error('Phase 2 operation timed out.'));
-            }, 60000);
+                reject(new Error('The operation timed out.'));
+            }, limitMs);
 
             function finish(error, result) {
                 if (settled) return;
@@ -274,7 +295,7 @@ function activate(context) {
 
                 if (Buffer.byteLength(stdout, 'utf8') > MAX_OUTPUT_BYTES) {
                     child.kill();
-                    finish(new Error('Phase 2 output exceeded the size limit.'));
+                    finish(new Error('Engine output exceeded the size limit.'));
                 }
             });
 
@@ -284,16 +305,16 @@ function activate(context) {
 
             child.on('error', error => {
                 finish(new Error(
-                    'Could not start the Phase 2 Python engine: ' + error.message
+                    'Could not start the Python engine: ' + error.message
                 ));
             });
 
             child.on('close', code => {
                 if (settled) return;
 
-                if (code !== 0) {
+                if (code !== 0 && !stdout.trim()) {
                     finish(new Error(
-                        (stderr || `Phase 2 process exited with code ${code}`)
+                        (stderr || `Engine process exited with code ${code}`)
                             .trim()
                             .slice(0, 1000)
                     ));
@@ -304,21 +325,21 @@ function activate(context) {
                     const result = JSON.parse(stdout);
 
                     if (result.status === 'error') {
-                        finish(new Error(result.error || 'Phase 2 operation failed.'));
+                        finish(new Error(result.error || 'The operation failed.'));
                         return;
                     }
 
                     finish(null, result);
                 } catch {
                     finish(new Error(
-                        'Phase 2 returned invalid JSON. ' +
+                        'The engine returned invalid JSON. ' +
                         stderr.trim().slice(0, 300)
                     ));
                 }
             });
 
             child.stdin.on('error', error => {
-                finish(new Error('Could not send the Phase 2 request: ' + error.message));
+                finish(new Error('Could not send the request: ' + error.message));
             });
 
             child.stdin.end(JSON.stringify(request));
@@ -484,6 +505,27 @@ function activate(context) {
 
         if (!apiKey) {
             throw new Error('Run CodeScale AI: Set Groq API Key first.');
+        }
+
+        // Secret guard: nothing containing a likely secret is sent to Groq.
+        const scan = await runPhase2({
+            operation: 'scan_secrets',
+            text: [
+                task,
+                currentCode,
+                ...attachments.map(item => item.content)
+            ].join('\n')
+        });
+
+        if (scan.count > 0) {
+            const places = scan.findings
+                .slice(0, 5)
+                .map(item => `${item.category} (${item.masked_value})`)
+                .join(', ');
+
+            throw new Error(
+                `Possible secrets were found: ${places}. Nothing was sent to Groq. Remove them and try again.`
+            );
         }
 
         const approved = await confirmCodeSharing();
@@ -844,6 +886,13 @@ Do not claim to execute code or tests.`;
                 output.appendLine(formatSuggestTests(result));
                 output.show(true);
 
+                recordHistory(vscode, {
+                    type: 'suggest_tests',
+                    file: fileName(uri),
+                    summary: `${(result.suggestions || []).length} suggestion(s)`,
+                    evidence: 'static'
+                });
+
                 vscode.window.showInformationMessage(
                     'CodeScale AI generated test suggestions.'
                 );
@@ -879,6 +928,13 @@ Do not claim to execute code or tests.`;
                 output.appendLine(formatBenchmark(result));
                 output.show(true);
 
+                recordHistory(vscode, {
+                    type: 'benchmark',
+                    file: fileName(uri),
+                    summary: benchmarkSummary(functionName.trim(), result),
+                    evidence: 'measured'
+                });
+
                 vscode.window.showInformationMessage(
                     `Benchmark completed for ${functionName}.`
                 );
@@ -904,6 +960,13 @@ Do not claim to execute code or tests.`;
                 output.appendLine(formatRecommendDSA(result));
                 output.show(true);
 
+                recordHistory(vscode, {
+                    type: 'suggest_dsa',
+                    file: fileName(uri),
+                    summary: `${(result.recommendations || []).length} recommendation(s)`,
+                    evidence: 'static'
+                });
+
                 vscode.window.showInformationMessage(
                     'CodeScale AI generated DSA suggestions.'
                 );
@@ -914,6 +977,34 @@ Do not claim to execute code or tests.`;
             }
         })
     );
+
+    // ---------------------------------------------------------------
+    // Phase 4 commands (live in their own files)
+    // ---------------------------------------------------------------
+
+    registerVerifyCommand({
+        vscode,
+        context,
+        output,
+        runPhase2,
+        errorText,
+        recordHistory
+    });
+
+    registerHistoryCommands({ vscode, context, output, errorText });
+
+    registerPhase4Commands({
+        vscode,
+        context,
+        output,
+        runPhase2,
+        errorText,
+        askAI,
+        getPythonTarget,
+        recordHistory,
+        fileName,
+        maxFileBytes: MAX_FILE_BYTES
+    });
 
     // ---------------------------------------------------------------
     // CodeScale AI chat
@@ -1564,6 +1655,13 @@ Do not claim to execute code or tests.`;
                     function: functionName.trim()
                 });
 
+                recordHistory(vscode, {
+                    type: 'benchmark',
+                    file: fileName(uri),
+                    summary: benchmarkSummary(functionName.trim(), result),
+                    evidence: 'measured'
+                });
+
                 panel.webview.postMessage({
                     command: 'phase2Result',
                     label,
@@ -1577,6 +1675,13 @@ Do not claim to execute code or tests.`;
                 const data = await analyzeFile(uri);
 
                 publishAnalysisDiagnostics(uri, data);
+
+                recordHistory(vscode, {
+                    type: 'analyze',
+                    file: fileName(uri),
+                    summary: `${countFindings(data)} finding(s) in ${(data.functions || []).length} function(s)`,
+                    evidence: 'static'
+                });
 
                 panel.webview.postMessage({
                     command: 'phase2Result',
@@ -1595,6 +1700,15 @@ Do not claim to execute code or tests.`;
             const text = operation === 'suggest_tests'
                 ? formatSuggestTests(result)
                 : formatRecommendDSA(result);
+
+            recordHistory(vscode, {
+                type: operation === 'suggest_tests' ? 'suggest_tests' : 'suggest_dsa',
+                file: fileName(uri),
+                summary: operation === 'suggest_tests'
+                    ? `${(result.suggestions || []).length} suggestion(s)`
+                    : `${(result.recommendations || []).length} recommendation(s)`,
+                evidence: 'static'
+            });
 
             panel.webview.postMessage({
                 command: 'phase2Result',
@@ -1668,6 +1782,13 @@ Do not claim to execute code or tests.`;
                 publishAnalysisDiagnostics(uri, data);
 
                 const summary = reportAnalysis(fileName(uri), data);
+
+                recordHistory(vscode, {
+                    type: 'analyze',
+                    file: fileName(uri),
+                    summary,
+                    evidence: 'static'
+                });
 
                 output.show(true);
 

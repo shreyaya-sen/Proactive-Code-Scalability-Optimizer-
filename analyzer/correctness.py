@@ -7,9 +7,7 @@ import argparse
 import json
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
-
 
 CHILD_RUNNER = r'''
 import importlib.util

@@ -1,6 +1,5 @@
 """Generate bounded, deterministic stress inputs for common code patterns."""
 
-from collections import Counter
 
 
 MAX_SIZE = 100_000

@@ -52,6 +52,38 @@
       {
         "command": "codescale-ai.suggestTests",
         "title": "CodeScale AI: Suggest Tests"
+      },
+      {
+        "command": "codescale-ai.verifyImplementations",
+        "title": "CodeScale AI: Verify Optimized Version"
+      },
+      {
+        "command": "codescale-ai.findWorstCase",
+        "title": "CodeScale AI: Find Worst-Case Input"
+      },
+      {
+        "command": "codescale-ai.compareImplementations",
+        "title": "CodeScale AI: Find Crossover Between Two Versions"
+      },
+      {
+        "command": "codescale-ai.runTests",
+        "title": "CodeScale AI: Run Tests"
+      },
+      {
+        "command": "codescale-ai.scanSecrets",
+        "title": "CodeScale AI: Scan for Secrets"
+      },
+      {
+        "command": "codescale-ai.optimizeWithAI",
+        "title": "CodeScale AI: Optimize with AI (Diff Preview)"
+      },
+      {
+        "command": "codescale-ai.showHistory",
+        "title": "CodeScale AI: Show History"
+      },
+      {
+        "command": "codescale-ai.exportReport",
+        "title": "CodeScale AI: Export Report"
       }
     ]
   },

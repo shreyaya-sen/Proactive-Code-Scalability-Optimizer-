@@ -7,12 +7,9 @@ argument. Benchmarking arbitrary Python code is not a security sandbox.
 import argparse
 import json
 import math
-import statistics
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
-
 
 CHILD_RUNNER = r'''
 import importlib.util

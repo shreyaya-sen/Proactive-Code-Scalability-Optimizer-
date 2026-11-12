@@ -18,4 +18,12 @@ testpaths = ["tests"]
 extend-exclude = ["analyzer/sample.py"]
 
 [tool.ruff.lint]
-ignore = ["SIM102"]
+ignore = [
+    "SIM102",  # style hint, ignored on purpose
+    "BLE001",  # engine entry points must catch everything and return JSON errors
+    "TRY004",  # ValueError is the documented error type for bad requests
+]
+
+[tool.ruff.lint.per-file-ignores]
+# This demo file is intentionally slow so the analyzer has something to flag.
+"analyzer/demo_phase2.py" = ["FURB192"]
