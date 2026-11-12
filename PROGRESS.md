@@ -16,7 +16,7 @@ Paste this file (or the relevant section) at the top of every new chat.
 - **Goal:** International AI coding competition + capstone
 - **Environment:** Windows 11, PowerShell (no `&&`), `uv run` for all Python. Click in the TERMINAL panel before pasting commands.
 - **Last updated:** 2026-11-12
-- **Last commit:** TBD (fill in from `git log -1 --oneline` after the Phase 4 commit)
+- **Last commit:** 690e22b "Phase 4 final: history fallback storage, Run Tests folder picker, fast demo file, launch config, PROGRESS.md"
 - **How the user wants to work:** guided steps, complete replacement files (not find-and-replace), exact PowerShell commands one per line.
 
 ---
@@ -101,7 +101,7 @@ Feature numbers follow the module table in ARCHITECTURE.md.
 
 ### Phase 5 — Extras
 - [ ] Feature 13 data cleaning · Feature 15 repo-wide analysis
-- [ ] B21: chat panel buttons for Phase 4 tools
+- [ ] B21: chat panel buttons for Phase 4 tools (needs `webview/chat.html`)
 - [ ] Remaining bugs: B2 test, B10, B11, B12, B7
 
 ### Phase 6 — Release (free cloud)
@@ -111,8 +111,8 @@ Feature numbers follow the module table in ARCHITECTURE.md.
 
 ## Current Step
 
-**Phase 4 complete** (2026-11-12). Seven new commands verified in the Extension Host; 34 tests pass; ruff and lint clean.
-Next: commit and push, then Phase 5 (chat panel buttons for Phase 4 tools, data cleaning, repo-wide analysis).
+**Phase 4 complete and pushed** (commit 690e22b, 2026-11-12). Seven new commands verified in the Extension Host; 34 tests pass; ruff and lint clean.
+Next: Phase 5, starting with chat panel buttons for the Phase 4 tools (paste `webview/chat.html` at the start of the next chat), then data cleaning and repo-wide analysis.
 
 ## Session Log
 
@@ -121,7 +121,7 @@ Next: commit and push, then Phase 5 (chat panel buttons for Phase 4 tools, data 
 | 2026-10-27 | Wrote docs; installed uv; pytest + ruff; fixed Test Groq and ESLint; analyzer detects list scans inside loops | Step 1.6 |
 | 2026-11-03 to 2026-11-06 | Line-level findings; `analyzeCurrentFile`; Inspect Code wired; B1 fixed | Phase 2 |
 | 2026-11-09 to 2026-11-10 | Phase 2 engine + commands; Phase 3 webview extraction, Analysis Tools panel, B6 fixed; commits 4e58a57, e1a2460 | Phase 4 |
-| 2026-11-12 | B19 fixed (be0e38c); pushed missing Phase 2 engine files (437f6cb); Phase 4: verify, worst-case, crossover, run tests, secret scanner, AI diff preview, history/reports; ruff config; `.vscode/launch.json` opens the project folder | Commit/push, Phase 5 |
+| 2026-11-12 | B19 fixed (be0e38c); pushed missing Phase 2 engine files (437f6cb); Phase 4: verify, worst-case, crossover, run tests, secret scanner, AI diff preview, history/reports (b3e239c); ruff config; launch.json opens the project folder; final Phase 4 commit 690e22b | Phase 5 |
 
 ## Gotchas Found
 
@@ -140,4 +140,4 @@ Next: commit and push, then Phase 5 (chat panel buttons for Phase 4 tools, data 
 - Extension Host: click inside the code before running commands, otherwise "Open a file in the editor first" appears. `.vscode/launch.json` opens the project folder automatically; Run Tests also has a "Choose another folder" option.
 - History/report is stored in the workspace `.codescale/` folder when a folder is open, otherwise in VS Code's global storage.
 - Never run `ruff --unsafe-fixes`: it would turn the intentional `sorted(nums)[0]` in `demo_phase2.py` into `min(nums)`.
-- AI-optimized code can change behaviour (e.g. first vs last index of duplicates). Save as Copy, run Verify, then apply.
+- AI-optimized code can change behaviour (e.g. first vs last index of duplicates). Save as Copy, run Verify, then apply. `*.optimized*.py` and `.codescale/` are in `.gitignore`.
