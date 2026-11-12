@@ -3,10 +3,15 @@ const path = require('path');
 
 const MAX_ENTRIES = 200;
 
+// Used when no workspace folder is open. Set when the commands register.
+let fallbackDir = null;
+
 function historyFolder(vscode) {
     const folder = vscode.workspace.workspaceFolders?.[0];
 
-    return folder ? path.join(folder.uri.fsPath, '.codescale') : null;
+    if (folder) return path.join(folder.uri.fsPath, '.codescale');
+
+    return fallbackDir;
 }
 
 function readHistory(vscode) {
@@ -49,6 +54,8 @@ function recordHistory(vscode, entry) {
 }
 
 function registerHistoryCommands({ vscode, context, output, errorText }) {
+    fallbackDir = path.join(context.globalStorageUri.fsPath, 'history');
+
     context.subscriptions.push(
         vscode.commands.registerCommand('codescale-ai.showHistory', () => {
             try {
@@ -84,7 +91,7 @@ function registerHistoryCommands({ vscode, context, output, errorText }) {
                 const dir = historyFolder(vscode);
 
                 if (!dir) {
-                    throw new Error('Open a workspace folder first.');
+                    throw new Error('No place is available to save the report.');
                 }
 
                 const history = readHistory(vscode);

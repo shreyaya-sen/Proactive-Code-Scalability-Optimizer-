@@ -341,17 +341,33 @@ function registerPhase4Commands({
                     });
                 }
 
-                if (!options.length) {
-                    throw new Error('Open a workspace folder or a Python test file first.');
-                }
+                options.push({
+                    label: 'Choose another folder or test file...',
+                    description: 'Pick it in a dialog',
+                    choose: true
+                });
 
-                const picked = options.length === 1
-                    ? options[0]
-                    : await vscode.window.showQuickPick(options, {
-                        title: 'What should pytest run?'
-                    });
+                const picked = await vscode.window.showQuickPick(options, {
+                    title: 'What should pytest run?'
+                });
 
                 if (!picked) return;
+
+                let target = picked.target;
+
+                if (picked.choose) {
+                    const chosen = await vscode.window.showOpenDialog({
+                        title: 'Choose a project folder or a test file for pytest',
+                        canSelectFiles: true,
+                        canSelectFolders: true,
+                        canSelectMany: false,
+                        openLabel: 'Run tests here'
+                    });
+
+                    if (!chosen?.[0]) return;
+
+                    target = chosen[0].fsPath;
+                }
 
                 if (!(await confirmRun('the selected tests'))) return;
 
@@ -361,13 +377,13 @@ function registerPhase4Commands({
                     'CodeScale AI is running pytest...',
                     () => runPhase2({
                         operation: 'run_tests',
-                        path: picked.target,
+                        path: target,
                         timeout_seconds: 100,
                         ui_timeout_ms: 130000
                     })
                 );
 
-                const targetName = path.basename(picked.target);
+                const targetName = path.basename(target);
 
                 output.appendLine('='.repeat(60));
                 output.appendLine(formatTests(result, targetName));
